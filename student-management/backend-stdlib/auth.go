@@ -8,17 +8,20 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
+
 	if err := readJSON(r, &req); err != nil {
 		writeJSONError(w, "Invalid registration data", http.StatusBadRequest)
 		return
 	}
 
-	if req.Name == "" || req.Email == "" || req.Username == "" || req.Password == "" || req.Gender == "" || req.City == "" {
+	// Validate required fields.
+	if req.Name == "" || req.Email == "" ||
+		req.Username == "" || req.Password == "" ||
+		req.Gender == "" || req.City == "" {
 		writeJSONError(w, "All fields are required", http.StatusBadRequest)
 		return
 	}
@@ -43,6 +46,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Start a transaction.
 	tx, err := db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeJSONError(w, "Failed to start transaction", http.StatusInternalServerError)
@@ -51,108 +55,279 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	// Insert student profile first to get student_id.
 	var studentID int
 	err = tx.QueryRowContext(r.Context(),
-		`INSERT INTO students (name, email, age, gender, city) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		req.Name, req.Email, req.Age, req.Gender, req.City).
-		Scan(&studentID)
+		`INSERT INTO students (name, email, age, gender, city)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		req.Name, req.Email, req.Age, req.Gender, req.City,
+	).Scan(&studentID)
 
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") && strings.Contains(err.Error(), "email") {
-			writeJSONError(w, "Email already registered", http.StatusConflict)
-			return
-		}
-		writeJSONError(w, "Failed to create student record", http.StatusInternalServerError)
 		log.Println("Insert student error:", err)
-		return
-	}
-
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		writeJSONError(w, "Failed to hash password", http.StatusInternalServerError)
-		log.Println("Hash error:", err)
-		return
-	}
-
-	_, err = tx.ExecContext(r.Context(),
-		`INSERT INTO users (username, password_hash, role, student_id, email) VALUES ($1, $2, $3, $4, $5)`,
-		req.Username, string(passwordHash), "student", studentID, req.Email)
-
-	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
-			if strings.Contains(err.Error(), "username") {
-				writeJSONError(w, "Username already taken", http.StatusConflict)
-				return
-			}
-			if strings.Contains(err.Error(), "email") {
-				writeJSONError(w, "Email already registered", http.StatusConflict)
-				return
-			}
-			if strings.Contains(err.Error(), "student_id") {
-				writeJSONError(w, "Student account already exists", http.StatusConflict)
-				return
-			}
+			writeJSONError(w, "Email already exists", http.StatusConflict)
+		} else {
+			writeJSONError(w, "Failed to create student", http.StatusInternalServerError)
 		}
-		writeJSONError(w, "Failed to create user account", http.StatusInternalServerError)
-		log.Println("Insert user error:", err)
 		return
 	}
 
+	// Hash the student's password.
+	hashedPassword, err := HashPassword(req.Password)
+	if err != nil {
+		log.Println("Password hashing error:", err)
+		writeJSONError(w, "Failed to secure password", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert hashed credentials into student_accounts.
+	_, err = tx.ExecContext(r.Context(),
+		`INSERT INTO student_accounts (username, email, password, student_id)
+		 VALUES ($1, $2, $3, $4)`,
+		req.Username, req.Email, hashedPassword, studentID,
+	)
+
+	if err != nil {
+		log.Println("Insert student account error:", err)
+		if strings.Contains(err.Error(), "duplicate key") {
+			writeJSONError(w, "Username or email already exists", http.StatusConflict)
+		} else {
+			writeJSONError(w, "Failed to create student account", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Commit both inserts together.
 	if err = tx.Commit(); err != nil {
+		log.Println("Registration commit error:", err)
 		writeJSONError(w, "Failed to complete registration", http.StatusInternalServerError)
-		log.Println("Commit error:", err)
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, RegisterResponse{
-		Message:   "Registration successful",
-		StudentID: studentID,
+		Message: "Registration successful",
 	})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
+
 	var req LoginRequest
+
+	// Read JSON request.
 	if err := readJSON(r, &req); err != nil {
 		writeJSONError(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	var user User
+	if req.Username == "" || req.Password == "" {
+		writeJSONError(w, "Username/email and password are required",
+			http.StatusBadRequest)
+		return
+	}
+
+	var (
+		accountID    int
+		username     string
+		password     string
+		role         string
+		studentID    *int
+		teacherID    *int
+		teacherIDVal int
+		isActive     bool
+		email        string
+	)
+
+	// Try to find account by username or email across all three tables
+	found := false
+
+	// STEP 1: Check admin account (by username or email)
 	err := db.QueryRowContext(r.Context(),
-		`SELECT id, username, password_hash, role, student_id FROM users WHERE username = $1`,
-		req.Username).
-		Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.StudentID)
+		`SELECT id, username, password, email
+         FROM admins
+         WHERE username = $1 OR email = $1`,
+		req.Username,
+	).Scan(&accountID, &username, &password, &email)
 
-	if err != nil {
-		writeJSONError(w, "Invalid username or password", http.StatusUnauthorized)
+	if err == nil {
+		role = "admin"
+		found = true
+	} else if err != sql.ErrNoRows {
+		log.Println("Admin login query error:", err)
+		writeJSONError(w, "Login failed", http.StatusInternalServerError)
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		writeJSONError(w, "Invalid username or password", http.StatusUnauthorized)
+	// STEP 2: Check student account (by username or email)
+	if !found {
+		err = db.QueryRowContext(r.Context(),
+			`SELECT id, username, password, student_id, email
+             FROM student_accounts
+             WHERE username = $1 OR email = $1`,
+			req.Username,
+		).Scan(&accountID, &username, &password, &studentID, &email)
+
+		if err == nil {
+			role = "student"
+			found = true
+		} else if err != sql.ErrNoRows {
+			log.Println("Student login query error:", err)
+			writeJSONError(w, "Login failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// STEP 3: Check teacher account (by username or email)
+	if !found {
+		err = db.QueryRowContext(r.Context(),
+			`SELECT id, username, password, teacher_id, is_active, email
+             FROM teacher_accounts
+             WHERE username = $1 OR email = $1`,
+			req.Username,
+		).Scan(
+			&accountID,
+			&username,
+			&password,
+			&teacherIDVal,
+			&isActive,
+			&email,
+		)
+		teacherID = &teacherIDVal
+
+		if err == sql.ErrNoRows {
+			writeJSONError(w,
+				"Invalid username/email or password",
+				http.StatusUnauthorized)
+			return
+		}
+
+		if err != nil {
+			log.Println("Teacher login query error:", err)
+			writeJSONError(w,
+				"Login failed",
+				http.StatusInternalServerError)
+			return
+		}
+
+		if !isActive {
+			writeJSONError(w,
+				"Teacher account is inactive",
+				http.StatusForbidden)
+			return
+		}
+
+		role = "teacher"
+		found = true
+	}
+
+	if !found {
+		writeJSONError(w,
+			"Invalid username/email or password",
+			http.StatusUnauthorized)
 		return
 	}
 
+	// STEP 4: Verify password using bcrypt for all roles.
+	if !CheckPassword(req.Password, password) {
+		writeJSONError(
+			w,
+			"Invalid username/email or password",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	// STEP 5: Generate JWT with role information.
 	claims := jwt.MapClaims{
-		"user_id":   user.ID,
-		"username":  user.Username,
-		"role":      user.Role,
-		"student_id": user.StudentID,
-		"exp":       time.Now().Add(24 * time.Hour).Unix(),
+		"user_id":    accountID,
+		"username":   username,
+		"email":      email,
+		"role":       role,
+		"student_id": studentID,
+		"teacher_id": teacherID,
+		"exp":        time.Now().Add(24 * time.Hour).Unix(),
 	}
-
+	//contains information about the logged-in user, such as user_id, username, role, and teacher_id.
+	//jwt.SigningMethodHS256 tells the JWT library to use the HS256 signing algorithm
+	//jwt.NewWithClaims(...) creates a JWT using those claims.
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
 	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {
-		writeJSONError(w, "Could not create token", http.StatusInternalServerError)
+		log.Println("JWT signing error:", err)
+		writeJSONError(w,
+			"Could not create token",
+			http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, LoginResponse{
-		Message:   "Login successful",
-		Token:     tokenString,
-		Role:      user.Role,
-		StudentID: user.StudentID,
+	// STEP 6: Return login response.
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message":    "Login successful",
+		"token":      tokenString,
+		"role":       role,
+		"user_id":    accountID,
+		"username":   username,
+		"email":      email,
+		"student_id": studentID,
+		"teacher_id": teacherID,
+	})
+}
+
+func handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := readJSON(r, &req); err != nil {
+		writeJSONError(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		writeJSONError(w, "All fields are required", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Password) < 8 {
+		writeJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	hashedPassword, err := HashPassword(req.Password)
+	if err != nil {
+		log.Println("Password hashing error:", err)
+		writeJSONError(
+			w,
+			"Failed to secure password",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	_, err = db.ExecContext(
+		r.Context(),
+		`INSERT INTO admins (username, email, password)
+         VALUES ($1, $2, $3)`,
+		req.Username,
+		req.Email,
+		hashedPassword,
+	)
+
+	if err != nil {
+		log.Println("Create admin error:", err)
+		writeJSONError(
+			w,
+			"Failed to create admin. Username or email may already exist.",
+			http.StatusConflict,
+		)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"message": "Admin created successfully",
 	})
 }
 
@@ -160,6 +335,12 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserID(r)
 	if !ok {
 		writeJSONError(w, "User ID not found in token", http.StatusUnauthorized)
+		return
+	}
+
+	role, ok := getRole(r)
+	if !ok {
+		writeJSONError(w, "Role not found in token", http.StatusUnauthorized)
 		return
 	}
 
@@ -179,32 +360,56 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var passwordHash string
-	err := db.QueryRowContext(r.Context(),
-		"SELECT password_hash FROM users WHERE id = $1", userID).
-		Scan(&passwordHash)
+	var password string
+	var tableName string
 
-	if err != nil {
-		writeJSONError(w, "User not found", http.StatusNotFound)
+	switch role {
+	case "admin":
+		tableName = "admins"
+	case "student":
+		tableName = "student_accounts"
+	case "teacher":
+		tableName = "teacher_accounts"
+	default:
+		writeJSONError(w, "Invalid role", http.StatusBadRequest)
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.CurrentPassword)); err != nil {
+	err := db.QueryRowContext(r.Context(),
+		"SELECT password FROM "+tableName+" WHERE id = $1", userID).
+		Scan(&password)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			writeJSONError(w, "User not found", http.StatusNotFound)
+		} else {
+			writeJSONError(w, "Failed to get user", http.StatusInternalServerError)
+			log.Println("Query error:", err)
+		}
+		return
+	}
+
+	if !CheckPassword(req.CurrentPassword, password) {
 		writeJSONError(w, "Current password is incorrect", http.StatusUnauthorized)
 		return
 	}
 
-	newPasswordHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	hashedPassword, err := HashPassword(req.NewPassword)
 	if err != nil {
-		writeJSONError(w, "Failed to create password hash", http.StatusInternalServerError)
+		log.Println("Password hashing error:", err)
+		writeJSONError(w, "Failed to secure password", http.StatusInternalServerError)
 		return
 	}
 
-	_, err = db.ExecContext(r.Context(),
-		"UPDATE users SET password_hash = $1 WHERE id = $2", string(newPasswordHash), userID)
-
+	_, err = db.ExecContext(
+		r.Context(),
+		"UPDATE "+tableName+" SET password = $1 WHERE id = $2",
+		hashedPassword,
+		userID,
+	)
 	if err != nil {
 		writeJSONError(w, "Failed to update password", http.StatusInternalServerError)
+		log.Println("Update error:", err)
 		return
 	}
 
@@ -228,27 +433,43 @@ func handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID int
-	err := db.QueryRowContext(r.Context(),
-		"SELECT id FROM users WHERE username = $1", req.Username).
-		Scan(&userID)
-
+	// Hash the new password before updating any account.
+	hashedPassword, err := HashPassword(req.NewPassword)
 	if err != nil {
+		log.Println("Password hashing error:", err)
+		writeJSONError(
+			w,
+			"Failed to secure password",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+	// Try to update in each table
+	tables := []string{"admins", "student_accounts", "teacher_accounts"}
+	updated := false
+
+	for _, table := range tables {
+		result, err := db.ExecContext(
+			r.Context(),
+			"UPDATE "+table+" SET password= $1 WHERE username = $2",
+			hashedPassword,
+			req.Username,
+		)
+
+		if err != nil {
+			log.Println("Forgot password update error for "+table+":", err)
+			continue
+		}
+
+		rowsAffected, _ := result.RowsAffected()
+
+		if rowsAffected > 0 {
+			updated = true
+			break
+		}
+	}
+	if !updated {
 		writeJSONError(w, "Username not found", http.StatusNotFound)
-		return
-	}
-
-	newPasswordHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
-	if err != nil {
-		writeJSONError(w, "Failed to create password hash", http.StatusInternalServerError)
-		return
-	}
-
-	_, err = db.ExecContext(r.Context(),
-		"UPDATE users SET password_hash = $1 WHERE id = $2", string(newPasswordHash), userID)
-
-	if err != nil {
-		writeJSONError(w, "Failed to reset password", http.StatusInternalServerError)
 		return
 	}
 

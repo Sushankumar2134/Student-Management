@@ -1,21 +1,21 @@
 package main
 
 type Student struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Age    int    `json:"age"`
-	Gender string `json:"gender"`
-	City   string `json:"city"`
+	ID     int     `json:"id"`
+	Name   string  `json:"name"`
+	Email  string  `json:"email"`
+	Age    *int    `json:"age"`
+	Gender *string `json:"gender"`
+	City   *string `json:"city"`
 }
 
 type User struct {
-	ID           int     `json:"id"`
-	Username     string  `json:"username"`
-	PasswordHash string  `json:"-"`
-	Role         string  `json:"role"`
-	StudentID    *int    `json:"student_id,omitempty"`
-	Email        string  `json:"email"`
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
+	Role         string `json:"role"`
+	StudentID    *int   `json:"student_id,omitempty"`
+	Email        string `json:"email"`
 }
 
 type LoginRequest struct {
@@ -41,8 +41,8 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	Message   string `json:"message"`
-	StudentID int    `json:"student_id"`
+	Message string `json:"message"`
+	//StudentID int    `json:"student_id"`
 }
 
 type ErrorResponse struct {
@@ -82,9 +82,9 @@ type StatisticsResponse struct {
 }
 
 type Claims struct {
-	UserID   int     `json:"user_id"`
-	Username string  `json:"username"`
-	Role     string  `json:"role"`
+	UserID    int    `json:"user_id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
 	StudentID *int   `json:"student_id"`
-	Exp      int64   `json:"exp"`
+	Exp       int64  `json:"exp"`
 }

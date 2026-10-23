@@ -35,11 +35,29 @@ func main() {
 	mux.HandleFunc("GET /profile", chain(handleGetProfile, jwtMiddleware, studentOnly))
 	mux.HandleFunc("PUT /profile", chain(handleUpdateProfile, jwtMiddleware, studentOnly))
 
+	mux.HandleFunc("GET /teacher/profile", chain(handleGetTeacherProfile, jwtMiddleware, teacherOnly))
+	mux.HandleFunc("PUT /teacher/profile", chain(handleUpdateTeacherProfile, jwtMiddleware, teacherOnly))
+	mux.HandleFunc("GET /teacher/dashboard", chain(handleGetTeacherDashboardEnhanced, jwtMiddleware, teacherOnly))
+
+	mux.HandleFunc("GET /teacher/classes", chain(handleGetTeacherClasses, jwtMiddleware, teacherOnly))
+	mux.HandleFunc("GET /teacher/subjects", chain(handleGetTeacherSubjects, jwtMiddleware, teacherOnly))
+	mux.HandleFunc("GET /teacher/students", chain(handleGetTeacherStudents, jwtMiddleware, teacherOnly))
+	mux.HandleFunc("GET /teacher/attendance", chain(handleGetAttendance, jwtMiddleware, teacherOnly))
+	mux.HandleFunc("POST /teacher/attendance", chain(handleMarkAttendance, jwtMiddleware, teacherOnly))
+
 	mux.HandleFunc("PUT /change-password", chain(handleChangePassword, jwtMiddleware))
 	mux.HandleFunc("POST /forgot-password", handleForgotPassword)
 
 	mux.HandleFunc("GET /statistics", chain(handleGetStatistics, jwtMiddleware, adminOnly))
 
+	mux.HandleFunc("POST /admins", handleCreateAdmin)
+
+	mux.Handle("POST /admin/teacher-accounts", chain(
+		http.HandlerFunc(CreateTeacherAccount),
+		jwtMiddleware,
+		adminOnly,
+	),
+	)
 	handler := corsMiddleware(mux)
 
 	server := &http.Server{

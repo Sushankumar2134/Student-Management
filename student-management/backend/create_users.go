@@ -1,100 +1,100 @@
-package main
+// package main
 
-import (
-	"context"
-	"fmt"
+// import (
+// 	"context"
+// 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-	"golang.org/x/crypto/bcrypt"
-)
+// 	"github.com/jackc/pgx/v5"
+// 	"golang.org/x/crypto/bcrypt"
+// )
 
-func createUsers() {
+// func createUsers() {
 
-	// Connect to PostgreSQL
-	conn, err := pgx.Connect(
-		context.Background(),
-		"postgres://postgres@localhost:5432/student_db",
-	)
+// 	// Connect to PostgreSQL
+// 	conn, err := pgx.Connect(
+// 		context.Background(),
+// 		"postgres://postgres@localhost:5432/student_db",
+// 	)
 
-	if err != nil {
-		fmt.Println("Database connection failed:", err)
-		return
-	}
+// 	if err != nil {
+// 		fmt.Println("Database connection failed:", err)
+// 		return
+// 	}
 
-	defer conn.Close(context.Background())
+// 	defer conn.Close(context.Background())
 
-	// =========================
-	// ADMIN USER
-	// =========================
+// 	// =========================
+// 	// ADMIN USER
+// 	// =========================
 
-	adminPassword := "Admin@123"
+// 	adminPassword := "Admin@123"
 
-	// Convert admin password into bcrypt hash
-	adminHash, err := bcrypt.GenerateFromPassword(
-		[]byte(adminPassword),
-		bcrypt.DefaultCost,
-	)
+// 	// Convert admin password into bcrypt hash
+// 	adminHash, err := bcrypt.GenerateFromPassword(
+// 		[]byte(adminPassword),
+// 		bcrypt.DefaultCost,
+// 	)
 
-	if err != nil {
-		fmt.Println("Password hashing failed:", err)
-		return
-	}
+// 	if err != nil {
+// 		fmt.Println("Password hashing failed:", err)
+// 		return
+// 	}
 
-	// Insert admin user
-	_, err = conn.Exec(
-		context.Background(),
-		`INSERT INTO users
-		(username, password_hash, role, student_id, email)
-		VALUES ($1, $2, $3, $4, $5)`,
-		"akarsh",
-		string(adminHash),
-		"admin",
-		nil,
-		"aakarsh88@gmail.com",
-	)
+// 	// Insert admin user
+// 	_, err = conn.Exec(
+// 		context.Background(),
+// 		`INSERT INTO users
+// 		(username, password_hash, role, student_id, email)
+// 		VALUES ($1, $2, $3, $4, $5)`,
+// 		"akarsh",
+// 		string(adminHash),
+// 		"admin",
+// 		nil,
+// 		"aakarsh88@gmail.com",
+// 	)
 
-	if err != nil {
-		fmt.Println("Admin creation failed:", err)
-		return
-	}
+// 	if err != nil {
+// 		fmt.Println("Admin creation failed:", err)
+// 		return
+// 	}
 
-	fmt.Println("Admin user created successfully!")
+// 	fmt.Println("Admin user created successfully!")
 
 
-	// =========================
-	// STUDENT USER
-	// =========================
+// 	// =========================
+// 	// STUDENT USER
+// 	// =========================
 
-	studentPassword := "Satish@123"
+// 	studentPassword := "Satish@123"
 
-	// Convert student password into bcrypt hash
-	studentHash, err := bcrypt.GenerateFromPassword(
-		[]byte(studentPassword),
-		bcrypt.DefaultCost,
-	)
+// 	// Convert student password into bcrypt hash
+// 	studentHash, err := bcrypt.GenerateFromPassword(
+// 		[]byte(studentPassword),
+// 		bcrypt.DefaultCost,
+// 	)
 
-	if err != nil {
-		fmt.Println("Password hashing failed:", err)
-		return
-	}
+// 	if err != nil {
+// 		fmt.Println("Password hashing failed:", err)
+// 		return
+// 	}
 
-	// Insert student user
-	_, err = conn.Exec(
-		context.Background(),
-		`INSERT INTO users
-		(username, password_hash, role, student_id, email)
-		VALUES ($1, $2, $3, $4, $5)`,
-		"satish",
-		string(studentHash),
-		"student",
-		101,
-		"satish@gmail.com",
-	)
+// 	// Insert student user
+// 	_, err = conn.Exec(
+// 		context.Background(),
+// 		`INSERT INTO users
+// 		(username, password_hash, role, student_id, email)
+// 		VALUES ($1, $2, $3, $4, $5)`,
+// 		"satish",
+// 		string(studentHash),
+// 		"student",
+// 		101,
+// 		"satish@gmail.com",
+// 	)
 
-	if err != nil {
-		fmt.Println("Student creation failed:", err)
-		return
-	}
+// 	if err != nil {
+// 		fmt.Println("Student creation failed:", err)
+// 		return
+// 	}
 
-	fmt.Println("Student user created successfully!")
-}
+// 	fmt.Println("Student user created successfully!")
+// }

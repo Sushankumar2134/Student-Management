@@ -809,6 +809,101 @@ tbody tr:hover {
 
 
 /* ==========================================
+   PAGINATION
+========================================== */
+
+.pagination {
+    padding: 18px 25px;
+    border-top: 1px solid #edf1f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.pagination-info {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pagination-button {
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid #e1e7ef;
+    border-radius: 7px;
+    background: white;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pagination-button:hover:not(:disabled) {
+    background: #f1f5ff;
+    border-color: #2563eb;
+    color: #2563eb;
+}
+
+.pagination-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-pages {
+    display: flex;
+    gap: 4px;
+}
+
+.pagination-page {
+    min-width: 34px;
+    height: 34px;
+    border: 1px solid #e1e7ef;
+    border-radius: 7px;
+    background: white;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pagination-page:hover:not(.active) {
+    background: #f1f5ff;
+    border-color: #2563eb;
+    color: #2563eb;
+}
+
+.pagination-page.active {
+    background: linear-gradient(135deg, #2563eb, #0f766e);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.25);
+}
+
+@media (max-width: 600px) {
+    .pagination {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .pagination-controls {
+        justify-content: center;
+    }
+}
+
+
+/* ==========================================
    MODAL
 ========================================== */
 

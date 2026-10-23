@@ -140,7 +140,11 @@ function Register({ onLogin }) {
                 </div>
 
                 {!submitted ? (
-                    <form onSubmit={handleRegister} noValidate>
+                    <form
+                            onSubmit={handleRegister}
+                            noValidate
+                            autoComplete="off"
+                    >
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Full Name <span className="required">*</span></label>
@@ -175,6 +179,7 @@ function Register({ onLogin }) {
                                 <input
                                     type="text"
                                     name="username"
+                                    autoComplete="off"
                                     placeholder="Choose a username"
                                     value={formData.username}
                                     onChange={handleChange}
@@ -192,6 +197,7 @@ function Register({ onLogin }) {
                                     <input
                                         type={showPassword ? "text" : "password"}
                                         name="password"
+                                        autoComplete="new-password"
                                         placeholder="Create a password (min 8 characters)"
                                         value={formData.password}
                                         onChange={handleChange}
@@ -204,7 +210,7 @@ function Register({ onLogin }) {
                                         onClick={() => setShowPassword(!showPassword)}
                                         title={showPassword ? "Hide password" : "Show password"}
                                     >
-                                        {showPassword ? "🙈" : "👁️"}
+                                        {showPassword ? "" : "👁"}
                                     </button>
                                 </div>
                             </div>
@@ -228,7 +234,7 @@ function Register({ onLogin }) {
                                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                         title={showConfirmPassword ? "Hide password" : "Show password"}
                                     >
-                                        {showConfirmPassword ? "🙈" : "👁️"}
+                                        {showConfirmPassword ? ":" : "👁"}
                                     </button>
                                 </div>
                             </div>

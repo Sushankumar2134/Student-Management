@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -9,60 +10,46 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type contextKey string
-
-const (
-	userIDKey   contextKey = "user_id"
-	usernameKey contextKey = "username"
-	roleKey     contextKey = "role"
-	studentIDKey contextKey = "student_id"
-)
-
+// []byte(...) converts the
+//
+//	string into bytes because the JWT library expects a key in this form.
+//
+// jwtSecret stores the key in memory for signing and verification.
 var jwtSecret = []byte(getJWTSecret())
 
+// getJWTSecret() gets the secret value.
 func getJWTSecret() string {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		return "student-management-secret"
+		log.Println("WARNING: JWT_SECRET not set, using default (insecure for production)")
+		return "your-super-secret-jwt-key-change-in-production"
 	}
 	return secret
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }
 
 func jwtMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			writeJSONError(w, "Authorization token required", http.StatusUnauthorized)
+			writeJSONError(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			writeJSONError(w, "Invalid authorization format", http.StatusUnauthorized)
+			writeJSONError(w, "Invalid authorization header format", http.StatusUnauthorized)
 			return
 		}
 
 		tokenString := parts[1]
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		claims := jwt.MapClaims{}
+		//verifies the JWT
+		//jwt.ParseWithClaims(...) reads the token and checks its signature.
+
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrTokenSignatureInvalid
+				return nil, jwt.ErrSignatureInvalid
 			}
 			return jwtSecret, nil
 		})
@@ -72,79 +59,142 @@ func jwtMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			writeJSONError(w, "Invalid token claims", http.StatusUnauthorized)
-			return
-		}
-
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, userIDKey, claims["user_id"])
-		ctx = context.WithValue(ctx, usernameKey, claims["username"])
-		ctx = context.WithValue(ctx, roleKey, claims["role"])
-		ctx = context.WithValue(ctx, studentIDKey, claims["student_id"])
-
+		ctx := context.WithValue(r.Context(), "claims", claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func adminOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role, ok := r.Context().Value(roleKey).(string)
+		claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+		if !ok {
+			writeJSONError(w, "Invalid token claims", http.StatusUnauthorized)
+			return
+		}
+
+		role, ok := claims["role"].(string)
 		if !ok || role != "admin" {
 			writeJSONError(w, "Admin access required", http.StatusForbidden)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
 
 func studentOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role, ok := r.Context().Value(roleKey).(string)
+		claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+		if !ok {
+			writeJSONError(w, "Invalid token claims", http.StatusUnauthorized)
+			return
+		}
+
+		role, ok := claims["role"].(string)
 		if !ok || role != "student" {
 			writeJSONError(w, "Student access required", http.StatusForbidden)
 			return
 		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func teacherOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+		if !ok {
+			writeJSONError(w, "Invalid token claims", http.StatusUnauthorized)
+			return
+		}
+
+		role, ok := claims["role"].(string)
+		if !ok || role != "teacher" {
+			writeJSONError(w, "Teacher access required", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
 
 func getUserID(r *http.Request) (int, bool) {
-	val := r.Context().Value(userIDKey)
-	if val == nil {
+	claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+	if !ok {
 		return 0, false
 	}
-	switch v := val.(type) {
-	case float64:
-		return int(v), true
-	case int:
-		return v, true
-	default:
+
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
 		return 0, false
 	}
+
+	return int(userIDFloat), true
 }
 
 func getStudentID(r *http.Request) (int, bool) {
-	val := r.Context().Value(studentIDKey)
-	if val == nil {
+	claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+	if !ok {
 		return 0, false
 	}
-	switch v := val.(type) {
-	case float64:
-		return int(v), true
-	case int:
-		return v, true
-	default:
+
+	studentIDVal, ok := claims["student_id"]
+	if !ok || studentIDVal == nil {
 		return 0, false
 	}
+
+	studentIDFloat, ok := studentIDVal.(float64)
+	if !ok {
+		return 0, false
+	}
+
+	return int(studentIDFloat), true
+}
+
+func getTeacherID(r *http.Request) (int, bool) {
+	claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+	if !ok {
+		return 0, false
+	}
+
+	teacherIDVal, ok := claims["teacher_id"]
+	if !ok || teacherIDVal == nil {
+		return 0, false
+	}
+
+	teacherIDFloat, ok := teacherIDVal.(float64)
+	if !ok {
+		return 0, false
+	}
+
+	return int(teacherIDFloat), true
 }
 
 func getRole(r *http.Request) (string, bool) {
-	val := r.Context().Value(roleKey)
-	if val == nil {
+	claims, ok := r.Context().Value("claims").(jwt.MapClaims)
+	if !ok {
 		return "", false
 	}
-	role, ok := val.(string)
-	return role, ok
+
+	role, ok := claims["role"].(string)
+	if !ok {
+		return "", false
+	}
+
+	return role, true
 }

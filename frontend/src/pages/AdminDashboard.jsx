@@ -9,6 +9,9 @@ function AdminDashboard({ onLogout }) {
 
     const [loading, setLoading] = useState(true);
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
+
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showViewModal, setShowViewModal] = useState(false);
@@ -102,6 +105,26 @@ function AdminDashboard({ onLogout }) {
         getStatistics();
 
     }, []);
+
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search]);
+
+
+    useEffect(() => {
+        const totalPages = Math.ceil(students.length / pageSize);
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(totalPages);
+        }
+    }, [students.length]);
+
+
+    const totalPages = Math.ceil(students.length / pageSize);
+    const startIndex = (currentPage - 1) * pageSize;
+    const visibleStudents = students.slice(startIndex, startIndex + pageSize);
+    const showingFrom = students.length > 0 ? startIndex + 1 : 0;
+    const showingTo = Math.min(startIndex + pageSize, students.length);
 
 
     // ==========================================
@@ -751,7 +774,7 @@ function AdminDashboard({ onLogout }) {
 
                                     <tbody>
 
-                                        {students.map((student) => (
+                                        {visibleStudents.map((student) => (
 
                                             <tr key={student.id}>
 
@@ -859,6 +882,41 @@ function AdminDashboard({ onLogout }) {
 
                                 </table>
 
+                            )}
+
+                            {students.length > 0 && (
+                                <div className="pagination">
+                                    <div className="pagination-info">
+                                        Showing {showingFrom}–{showingTo} of {students.length} students
+                                    </div>
+                                    <div className="pagination-controls">
+                                        <button
+                                            className="pagination-button"
+                                            onClick={() => setCurrentPage(currentPage - 1)}
+                                            disabled={currentPage === 1}
+                                        >
+                                            Previous
+                                        </button>
+                                        <div className="pagination-pages">
+                                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                                                <button
+                                                    key={page}
+                                                    className={`pagination-page ${currentPage === page ? "active" : ""}`}
+                                                    onClick={() => setCurrentPage(page)}
+                                                >
+                                                    {page}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <button
+                                            className="pagination-button"
+                                            onClick={() => setCurrentPage(currentPage + 1)}
+                                            disabled={currentPage === totalPages}
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
                             )}
 
                         </div>

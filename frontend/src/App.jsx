@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/AdminDashboard";
 import StudentDashboard from "./pages/StudentDashboard";
+import TeacherDashboard from "./pages/TeacherDashboard";
 
 function App() {
 
@@ -39,6 +40,11 @@ function App() {
     // Student
     if (role === "student") {
         return <StudentDashboard onLogout={handleLogout} />;
+    }
+
+    // Teacher
+    if (role === "teacher") {
+        return <TeacherDashboard onLogout={handleLogout} />;
     }
 
     return <Login onLogin={handleLogin} />;

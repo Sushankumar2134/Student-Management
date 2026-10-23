@@ -205,7 +205,7 @@ function Login({ onLogin }) {
 
                 {/* Login form */}
 
-                <form onSubmit={handleLogin}>
+                <form onSubmit={handleLogin} autoComplete="off">
 
                     {/* Username */}
 
@@ -213,23 +213,15 @@ function Login({ onLogin }) {
 
                         <label>Username</label>
 
-                        <div className="input-with-side-icon">
-
-                            <span className="side-input-icon">
-                                👤
-                            </span>
-
-                            <input
-                                type="text"
-                                placeholder="Enter your username"
-                                value={username}
-                                onChange={(e) =>
-                                    setUsername(e.target.value)
-                                }
-                                required
-                            />
-
-                        </div>
+                        <input
+                            type="text"
+                            placeholder="Enter your username"
+                            value={username}
+                            onChange={(e) =>
+                                setUsername(e.target.value)
+                            }
+                            required
+                        />
 
                     </div>
 
@@ -253,10 +245,6 @@ function Login({ onLogin }) {
                         </div>
 
                         <div className="input-wrapper">
-
-                            <span className="input-with-side-icon">
-                                🔒
-                            </span>
 
                             <input
                                 type={
@@ -284,7 +272,7 @@ function Login({ onLogin }) {
                                         : "Show password"
                                 }
                             >
-                                {showPassword ? "🙈" : "👁️"}
+                                {showPassword ? " :" : "👁"}
                             </button>
 
                         </div>
@@ -344,13 +332,7 @@ function Login({ onLogin }) {
                 {/* Footer */}
 
                 <div className="login-footer">
-
-                    <span className="secure-icon">
-                        🔐
-                    </span>
-
                     Secure authentication
-
                 </div>
 
             </div>
@@ -380,11 +362,6 @@ function Login({ onLogin }) {
                         >
                             ×
                         </button>
-
-
-                        <div className="forgot-icon">
-                            🔐
-                        </div>
 
 
                         <h2>Reset Password</h2>
